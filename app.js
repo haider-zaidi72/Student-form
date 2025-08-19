@@ -5,87 +5,90 @@ const client = supabase.createClient(supabaseUrl, supabaseKey);
 
 console.log(client)
 
+// =================== Modal Controls ===================
+const enrollBtn = document.getElementById("enrollBtn");
+const studentModal = document.getElementById("studentModal");
+const closeModal = document.getElementById("closeModal");
+const studentForm = document.getElementById("studentForm");
 
-const enrollBtn = document.getElementById('enrollBtn');
-    const modal = document.getElementById('studentModal');
-    const closeModal = document.getElementById('closeModal');
-    const courseSelect = document.getElementById('courseSelect');
-    const programmingOptions = document.getElementById('programmingOptions');
-    const itOptions = document.getElementById('itOptions');
-    const studentForm = document.getElementById('studentForm');
+enrollBtn.addEventListener("click", () => {
+  studentModal.style.display = "block";
+});
 
-    // Open modal
-    enrollBtn.onclick = () => {
-      modal.style.display = "flex";
-    }
-    // Close modal
-    closeModal.onclick = () => {
-      modal.style.display = "none";
-    }
-    window.onclick = (e) => {
-      if (e.target == modal) {
-        modal.style.display = "none";
-      }
-    }
+closeModal.addEventListener("click", () => {
+  studentModal.style.display = "none";
+});
 
-    // Course selection
-    courseSelect.addEventListener('change', () => {
-      if (courseSelect.value === "programming") {
-        programmingOptions.style.display = "block";
-        itOptions.style.display = "none";
-      } else if (courseSelect.value === "it") {
-        itOptions.style.display = "block";
-        programmingOptions.style.display = "none";
-      } else {
-        programmingOptions.style.display = "none";
-        itOptions.style.display = "none";
-      }
-    });
+// =================== Roll Number Generator ===================
+async function generateRollNo(campus) {
+  let prefix = "";
+  switch(campus) {
+    case "Gulshan": prefix = "G"; break;
+    case "Korangi": prefix = "K"; break;
+    case "Nazimabad": prefix = "N"; break;
+    case "Defence": prefix = "D"; break;
+    default: prefix = "X"; break;
+  }
 
-    // Submit form & Save to LocalStorage
-    studentForm.addEventListener('submit', function(e) {
-      e.preventDefault();
+  // last roll no fetch
+  const { data, error } = await client
+    .from("students")
+    .select("roll_no")
+    .ilike("roll_no", `${prefix}-%`)
+    .order("id", { ascending: false })
+    .limit(1);
 
-      const formData = new FormData(studentForm);
-      const student = {};
-      formData.forEach((value, key) => {
-        student[key] = value;
-      });
+  if (error) {
+    console.error("❌ Roll No Fetch Error:", error.message);
+    return `${prefix}-0001`;
+  }
 
-      // Save array of students
-      let students = JSON.parse(localStorage.getItem("students")) || [];
-      students.push(student);
-      localStorage.setItem("students", JSON.stringify(students));
+  if (!data || data.length === 0) return `${prefix}-0001`;
 
-      alert("Student data saved to LocalStorage!");
-      studentForm.reset();
-      programmingOptions.style.display = "none";
-      itOptions.style.display = "none";
-      modal.style.display = "none";
-    });
-
-    //============ supabase data data ===================
-    
-    const {data, error} = await supabase
-    .from ("students")
-    .insert ( 
-        [
-            {
-                name: name,
-                gender: gender,
-                phone: phone,
-                cnic: cnic,
-                email: email,
-                course: course,
-                subcourse: subcourse,
-                campus: campus,
-                image: image
-            }
-
-        ]
-    );
-    if (error) {
-  console.error("❌ Insert error:", error);
-} else {
-  console.log("✅ Insert success:", data);
+  const lastRoll = data[0].roll_no;
+  const lastNum = parseInt(lastRoll.split("-")[1]);
+  const newNum = (lastNum + 1).toString().padStart(4, "0");
+  return `${prefix}-${newNum}`;
 }
+
+// =================== Form Submit Handler ===================
+studentForm.addEventListener("submit", async function(e) {
+  e.preventDefault(); // reload prevent
+
+  const formData = new FormData(studentForm);
+  const student = Object.fromEntries(formData.entries());
+
+  // Roll number generate
+  student.roll_no = await generateRollNo(student.campus);
+
+  // Image name store (optional)
+  if (formData.get("image") && formData.get("image").name) {
+    student.image = formData.get("image").name;
+  } else {
+    student.image = "";
+  }
+
+  // =================== LocalStorage Save ===================
+  let students = JSON.parse(localStorage.getItem("students")) || [];
+  students.push(student);
+  localStorage.setItem("students", JSON.stringify(students));
+  console.log("✅ LocalStorage Save:", students);
+
+  // =================== Supabase Insert ===================
+  const { data, error } = await client.from("students").insert([student]);
+
+  if (error) {
+    console.error("❌ Supabase Insert Error:", error.message);
+    alert("Error saving data to Supabase!");
+  } else {
+    console.log("✅ Supabase Insert Success:", data);
+    alert(`Student enrolled successfully! Roll No: ${student.roll_no}`);
+    studentForm.reset();
+    studentModal.style.display = "none";
+  }
+});
+
+// =================== Close modal on outside click ===================
+window.addEventListener("click", (e) => {
+  if (e.target === studentModal) studentModal.style.display = "none";
+});
